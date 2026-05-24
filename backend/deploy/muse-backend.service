@@ -1,0 +1,27 @@
+[Unit]
+Description=Muse PocketBase backend
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=muse
+Group=muse
+WorkingDirectory=/opt/muse/backend
+EnvironmentFile=/etc/muse/backend.env
+ExecStart=/opt/muse/backend/muse --dir=/var/lib/muse/pb_data serve --http=${MUSE_HTTP} --origins=${MUSE_ALLOWED_ORIGINS}
+Restart=on-failure
+RestartSec=5
+LimitNOFILE=65535
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=full
+ReadWritePaths=/var/lib/muse /var/log/muse
+CapabilityBoundingSet=
+AmbientCapabilities=
+StandardOutput=append:/var/log/muse/backend.log
+StandardError=append:/var/log/muse/backend.err.log
+
+[Install]
+WantedBy=multi-user.target

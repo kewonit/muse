@@ -1,0 +1,121 @@
+name: Deploy Backend
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "backend/**"
+      - ".github/workflows/deploy-backend.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-backend
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: production
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Set up Go
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: backend/go.mod
+          cache-dependency-path: backend/go.sum
+
+      - name: Test backend
+        working-directory: backend
+        run: go test ./...
+
+      - name: Build backend
+        working-directory: backend
+        env:
+          CGO_ENABLED: "0"
+          GOOS: linux
+          GOARCH: amd64
+        run: |
+          mkdir -p bin
+          go build -trimpath -ldflags="-s -w" -o bin/muse .
+
+      - name: Prepare SSH
+        env:
+          SSH_PRIVATE_KEY: ${{ secrets.DO_SSH_PRIVATE_KEY }}
+          DROPLET_HOST: ${{ secrets.DO_DROPLET_HOST }}
+        run: |
+          test -n "${SSH_PRIVATE_KEY}" || (echo "Missing DO_SSH_PRIVATE_KEY secret" >&2; exit 1)
+          test -n "${DROPLET_HOST}" || (echo "Missing DO_DROPLET_HOST secret" >&2; exit 1)
+          install -m 0700 -d ~/.ssh
+          printf '%s\n' "${SSH_PRIVATE_KEY}" > ~/.ssh/muse_deploy_key
+          chmod 0600 ~/.ssh/muse_deploy_key
+          ssh-keyscan -H "${DROPLET_HOST}" >> ~/.ssh/known_hosts
+
+      - name: Upload release
+        env:
+          DROPLET_HOST: ${{ secrets.DO_DROPLET_HOST }}
+          DROPLET_USER: ${{ secrets.DO_DROPLET_USER || 'root' }}
+        run: |
+          ssh -i ~/.ssh/muse_deploy_key "${DROPLET_USER}@${DROPLET_HOST}" 'install -d -m 0700 /tmp/muse-deploy'
+          scp -i ~/.ssh/muse_deploy_key backend/bin/muse "${DROPLET_USER}@${DROPLET_HOST}:/tmp/muse-deploy/muse"
+          scp -i ~/.ssh/muse_deploy_key backend/deploy/muse-backend.service "${DROPLET_USER}@${DROPLET_HOST}:/tmp/muse-deploy/muse-backend.service"
+          scp -i ~/.ssh/muse_deploy_key backend/deploy/install-release.sh "${DROPLET_USER}@${DROPLET_HOST}:/tmp/muse-deploy/install-release.sh"
+          scp -i ~/.ssh/muse_deploy_key backend/deploy/Caddyfile.example "${DROPLET_USER}@${DROPLET_HOST}:/tmp/muse-deploy/Caddyfile"
+
+      - name: Deploy service
+        env:
+          DROPLET_HOST: ${{ secrets.DO_DROPLET_HOST }}
+          DROPLET_USER: ${{ secrets.DO_DROPLET_USER || 'root' }}
+          MUSE_ALLOWED_ORIGINS: ${{ secrets.MUSE_ALLOWED_ORIGINS }}
+          MUSE_HTTP: ${{ secrets.MUSE_HTTP }}
+          PB_ADMIN_EMAIL: ${{ secrets.PB_ADMIN_EMAIL }}
+          PB_ADMIN_PASSWORD: ${{ secrets.PB_ADMIN_PASSWORD }}
+        run: |
+          test -n "${MUSE_ALLOWED_ORIGINS}" || (echo "Missing MUSE_ALLOWED_ORIGINS secret" >&2; exit 1)
+          {
+            printf 'MUSE_ALLOWED_ORIGINS=%q\n' "${MUSE_ALLOWED_ORIGINS:-}"
+            printf 'MUSE_HTTP=%q\n' "${MUSE_HTTP:-}"
+            printf 'PB_ADMIN_EMAIL=%q\n' "${PB_ADMIN_EMAIL:-}"
+            printf 'PB_ADMIN_PASSWORD=%q\n' "${PB_ADMIN_PASSWORD:-}"
+          } > "${RUNNER_TEMP}/muse-deploy.env"
+          chmod 0600 "${RUNNER_TEMP}/muse-deploy.env"
+          scp -i ~/.ssh/muse_deploy_key "${RUNNER_TEMP}/muse-deploy.env" "${DROPLET_USER}@${DROPLET_HOST}:/tmp/muse-deploy/deploy.env"
+          ssh -i ~/.ssh/muse_deploy_key "${DROPLET_USER}@${DROPLET_HOST}" 'set -a; . /tmp/muse-deploy/deploy.env; set +a; rm -f /tmp/muse-deploy/deploy.env; chmod +x /tmp/muse-deploy/install-release.sh; /tmp/muse-deploy/install-release.sh'
+
+      - name: Remote backend health check
+        env:
+          DROPLET_HOST: ${{ secrets.DO_DROPLET_HOST }}
+          DROPLET_USER: ${{ secrets.DO_DROPLET_USER || 'root' }}
+        run: |
+          ssh -i ~/.ssh/muse_deploy_key "${DROPLET_USER}@${DROPLET_HOST}" '
+            for attempt in $(seq 1 20); do
+              if curl --fail --show-error --silent --max-time 5 http://127.0.0.1:8090/api/muse/health; then
+                exit 0
+              fi
+              sleep 1
+            done
+            systemctl --no-pager --full status muse-backend || true
+            journalctl -u muse-backend --no-pager -n 80 || true
+            exit 1
+          '
+
+      - name: External health check
+        env:
+          BACKEND_HEALTH_URL: ${{ secrets.BACKEND_HEALTH_URL }}
+          BACKEND_EXTERNAL_HEALTH_REQUIRED: ${{ secrets.BACKEND_EXTERNAL_HEALTH_REQUIRED }}
+        run: |
+          if [ -n "${BACKEND_HEALTH_URL}" ]; then
+            if ! curl --fail --show-error --silent --max-time 15 "${BACKEND_HEALTH_URL}"; then
+              if [ "${BACKEND_EXTERNAL_HEALTH_REQUIRED}" = "true" ]; then
+                exit 1
+              fi
+              echo "::warning::External backend health check failed. This is expected until DNS and TLS are active."
+            fi
+          else
+            echo "BACKEND_HEALTH_URL not configured; skipping external health check."
+          fi

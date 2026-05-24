@@ -1,0 +1,81 @@
+# Repository-local agent and planning files
+.agents/
+.codex/
+.cursor/
+.continue/
+.windsurf/
+.roo/
+.aider*
+.cursorrules
+.superpowers/
+.superpowers*
+superpowers/
+superpowers-*/
+AGENTS.md
+CLAUDE.md
+GEMINI.md
+**/AGENTS.md
+**/CLAUDE.md
+**/GEMINI.md
+skills-lock.json
+plans/
+*.plan.md
+ARCHITECTURE.md
+ARCHITECTURE*.md
+system-design.md
+system-design*.md
+RUN.md
+
+# Environment files and credentials
+.env
+.env.*
+!.env.example
+**/.env
+**/.env.*
+!**/.env.example
+*.pem
+*.key
+*.crt
+*.p12
+*.pfx
+
+# PocketBase and local database state
+backend/pb_data/
+**/pb_data/
+*.db
+*.db-shm
+*.db-wal
+*.sqlite
+*.sqlite3
+
+# Dependencies and generated frontend output
+node_modules/
+**/node_modules/
+frontend/.next/
+frontend/out/
+frontend/build/
+frontend/coverage/
+coverage/
+next-env.d.ts
+*.tsbuildinfo
+
+# Backend build output
+backend/*.exe
+backend/bin/
+backend/dist/
+*.test
+*.out
+
+# Logs and local caches
+*.log
+.pytest_cache/
+__pycache__/
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Local editor and hosting metadata
+.vscode/
+.idea/
+.vercel/
+**/.vercel/

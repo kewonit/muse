@@ -1,0 +1,62 @@
+# =============================================
+# Muse Backend — Git Ignore
+# =============================================
+
+# --- Binaries ---
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+/bin/
+/dist/
+
+# --- Go specific ---
+# Test binary, built with `go test -c`
+*.test
+
+# Output of the go coverage tool
+*.out
+*.cov
+coverage.html
+
+# Go workspace file
+go.work
+
+# --- Accidental Node.js artifacts ---
+# (This is a Go project; remove if you actually need Node here)
+node_modules/
+package.json
+package-lock.json
+
+# --- Data & runtime directories ---
+# PocketBase SQLite data — never commit
+pb_data/
+
+# Application logs
+logs/
+*.log
+
+# --- Integration test artifacts ---
+test/__pycache__/
+test/*.pyc
+test/.pytest_cache/
+
+# --- Environment / Secrets ---
+.env
+.env.local
+.env.*.local
+*.pem
+*.key
+
+# --- IDE / Editor ---
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# --- OS generated ---
+.DS_Store
+Thumbs.db
+desktop.ini
